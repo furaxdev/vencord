@@ -7,15 +7,22 @@
 const STYLE_ID = "vc-mobile-helper";
 
 const CSS = `
-/* Safe area: push content above Android system nav bar */
-#app-mount,
-[class*="app-"] {
+/* Safe area: push content away from Android status bar and nav bar */
+#app-mount {
+    padding-top: var(--status-bar-height, env(safe-area-inset-top, 0px)) !important;
     padding-bottom: env(safe-area-inset-bottom, 0px) !important;
 }
 
 /* Prevent the user panel (profile) from hiding behind the system nav */
 [class*="panels-"] {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px) !important;
+}
+
+/* Push the top sidebar/toolbar below the status bar */
+[class*="sidebar-"],
+[class*="guilds-"],
+[class*="base-"] > [class*="content-"] {
+    margin-top: 0 !important;
 }
 
 /* Friends/DM tab bar: scrollable so nothing is clipped on the right */

@@ -85,6 +85,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         setContentView(webView)
+
+        // Expose status-bar height as a CSS variable after layout
+        window.decorView.setOnApplyWindowInsetsListener { view, insets ->
+            val px = insets.systemWindowInsetTop
+            webView.post {
+                webView.evaluateJavascript(
+                    "document.documentElement.style.setProperty('--status-bar-height','${px}px')",
+                    null
+                )
+            }
+            view.onApplyWindowInsets(insets)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
