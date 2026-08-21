@@ -1,0 +1,79 @@
+name: Reverse Engineer Discord JS Bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      discord_version:
+        description: 'Discord version code (leave empty for latest)'
+        required: false
+        default: ''
+
+jobs:
+  extract:
+    name: Download & Extract Discord Bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Download apkeep ──────────────────────────────────────────────────
+      - name: Install apkeep
+        run: |
+          curl -sSL https://github.com/EFForg/apkeep/releases/download/0.17.0/apkeep-x86_64-unknown-linux-gnu \
+            -o /usr/local/bin/apkeep
+          chmod +x /usr/local/bin/apkeep
+
+      # ── Download Discord APK from APKPure (no account needed) ────────────
+      - name: Download Discord APK
+        run: |
+          mkdir -p discord-apk
+          apkeep -a com.discord -d apkpure discord-apk/
+          ls -lh discord-apk/
+
+      # ── Extract the APK ──────────────────────────────────────────────────
+      - name: Extract APK contents
+        run: |
+          cd discord-apk
+          APK=$(ls *.apk 2>/dev/null || ls *.xapk 2>/dev/null | head -1)
+          echo "Found: $APK"
+          unzip -o "$APK" -d extracted/ || true
+          # If XAPK, extract inner APK
+          if ls extracted/*.apk 1>/dev/null 2>&1; then
+            unzip -o extracted/base.apk -d extracted/base/ || true
+            BUNDLE_PATH="extracted/base/assets/index.android.bundle"
+          else
+            BUNDLE_PATH="extracted/assets/index.android.bundle"
+          fi
+          ls -lh "$BUNDLE_PATH" || echo "Bundle not found at $BUNDLE_PATH, listing assets:"
+          ls extracted/assets/ 2>/dev/null || ls extracted/base/assets/ 2>/dev/null
+
+      # ── Analyse bundle structure ─────────────────────────────────────────
+      - name: Analyse JS bundle
+        run: |
+          cd discord-apk
+          BUNDLE=$(find . -name "index.android.bundle" | head -1)
+          if [ -z "$BUNDLE" ]; then
+            echo "ERROR: bundle not found"
+            exit 1
+          fi
+          SIZE=$(wc -c < "$BUNDLE")
+          echo "Bundle size: $SIZE bytes"
+
+          # Check if it's a hermes bytecode or plain JS
+          MAGIC=$(xxd -l 4 "$BUNDLE" | head -1)
+          echo "Magic bytes: $MAGIC"
+          if file "$BUNDLE" | grep -q "Hermes"; then
+            echo "FORMAT: Hermes bytecode (need decompiler)"
+          else
+            echo "FORMAT: Plain JS / packed JS"
+            head -c 500 "$BUNDLE"
+          fi
+
+      # ── Upload bundle for inspection ─────────────────────────────────────
+      - name: Upload Discord JS bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: discord-bundle-${{ github.run_id }}
+          path: discord-apk/**/index.android.bundle
+          retention-days: 3
