@@ -180,7 +180,7 @@ async function loadDir(dir, basePath = "") {
 }
 
 /**
-  * @type {(target: string, files: string[]) => Promise<void>}
+  * @type {(target: string, files: string[], jsSource?: string) => Promise<void>}
  */
 async function buildExtension(target, files, jsSource = "dist/extension.js") {
     const entries = {
