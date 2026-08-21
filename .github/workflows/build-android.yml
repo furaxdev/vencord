@@ -3,7 +3,6 @@ name: Build Android APK (Vencord4Mobile)
 on:
   push:
     branches: [main, "claude/vencord4mobile-android-*"]
-    paths: ["src/**", "browser/**", "scripts/**", "android/**", ".github/workflows/build-android.yml"]
   workflow_dispatch:
 
 jobs:
