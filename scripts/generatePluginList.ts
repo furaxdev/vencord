@@ -166,7 +166,7 @@ async function parseFile(fileName: string) {
 
         const target = getPluginTarget(fileName);
         if (target) {
-            if (!["web", "browser", "discordDesktop", "vesktop", "desktop", "dev"].includes(target)) throw fail(`invalid target ${target}`);
+            if (!["web", "browser", "discordDesktop", "vesktop", "desktop", "mobile", "dev"].includes(target)) throw fail(`invalid target ${target}`);
             data.target = target as any;
         }
 

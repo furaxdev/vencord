@@ -35,6 +35,8 @@ declare global {
     export var IS_WEB: boolean;
     export var IS_EXTENSION: boolean;
     export var IS_USERSCRIPT: boolean;
+    /** True when built specifically for the mobile (Android/iOS) target */
+    export var IS_MOBILE_BUILD: boolean;
     export var IS_STANDALONE: boolean;
     export var IS_UPDATER_DISABLED: boolean;
     export var IS_DEV: boolean;

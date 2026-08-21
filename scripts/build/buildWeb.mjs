@@ -44,6 +44,7 @@ const commonOptions = {
         IS_WEB: true,
         IS_EXTENSION: false,
         IS_USERSCRIPT: false,
+        IS_MOBILE_BUILD: false,
         IS_STANDALONE,
         IS_DEV,
         IS_REPORTER,
@@ -111,6 +112,43 @@ const buildConfigs = [
             // UserScripts get wrapped in an iife, so define Vencord prop on window that returns our local
             js: "Object.defineProperty(unsafeWindow,'Vencord',{get:()=>Vencord});"
         }
+    },
+    // Mobile build: userscript optimised for Android (Firefox + Tampermonkey / Kiwi Browser)
+    {
+        ...commonOptions,
+        plugins: [
+            globPlugins("mobile"),
+            ...commonRendererPlugins
+        ],
+        inject: ["browser/GMPolyfill.js", ...(commonOptions?.inject || [])],
+        define: {
+            ...commonOptions.define,
+            IS_USERSCRIPT: "true",
+            IS_MOBILE_BUILD: "true",
+            window: "unsafeWindow",
+        },
+        outfile: "dist/Vencord.mobile.user.js",
+        banner: {
+            js: readFileSync("browser/userscript.meta.mobile.js", "utf-8").replace("%version%", `${VERSION}.${new Date().getTime()}`)
+        },
+        footer: {
+            js: "Object.defineProperty(unsafeWindow,'Vencord',{get:()=>Vencord});"
+        }
+    },
+    // Mobile extension build (Firefox for Android / Kiwi Browser)
+    {
+        ...commonOptions,
+        plugins: [
+            globPlugins("mobile"),
+            ...commonRendererPlugins
+        ],
+        outfile: "dist/extension-mobile.js",
+        define: {
+            ...commonOptions.define,
+            IS_EXTENSION: "true",
+            IS_MOBILE_BUILD: "true",
+        },
+        footer: { js: "//# sourceURL=file:///VencordMobile" }
     }
 ];
 
@@ -142,11 +180,11 @@ async function loadDir(dir, basePath = "") {
 }
 
 /**
-  * @type {(target: string, files: string[]) => Promise<void>}
+  * @type {(target: string, files: string[], jsSource?: string) => Promise<void>}
  */
-async function buildExtension(target, files) {
+async function buildExtension(target, files, jsSource = "dist/extension.js") {
     const entries = {
-        "dist/Vencord.js": await readFile("dist/extension.js"),
+        "dist/Vencord.js": await readFile(jsSource),
         "dist/Vencord.css": await readFile("dist/extension.css"),
         ...await loadDir("dist/vendor/monaco", "dist/"),
         ...Object.fromEntries(await Promise.all(files.map(async f => {
@@ -175,17 +213,19 @@ async function buildExtension(target, files) {
     console.info("Unpacked Extension written to dist/" + target);
 }
 
-const appendCssRuntime = readFile("dist/Vencord.user.css", "utf-8").then(content => {
-    const cssRuntime = `unsafeWindow._vcUserScriptRendererCss=\`${content.replaceAll("`", "\\`")}\``;
+const cssContent = await readFile("dist/Vencord.user.css", "utf-8");
+const cssRuntime = `unsafeWindow._vcUserScriptRendererCss=\`${cssContent.replaceAll("`", "\\`")}\``;
 
-    return appendFile("dist/Vencord.user.js", cssRuntime);
-});
+const appendCssRuntime = appendFile("dist/Vencord.user.js", cssRuntime);
+const appendMobileCssRuntime = appendFile("dist/Vencord.mobile.user.js", cssRuntime);
 
 if (!process.argv.includes("--skip-extension")) {
     await Promise.all([
         appendCssRuntime,
+        appendMobileCssRuntime,
         buildExtension("chromium-unpacked", ["modifyResponseHeaders.json", "content.js", "manifest.json", "icon.png", "service-worker.js"]),
         buildExtension("firefox-unpacked", ["background.js", "content.js", "manifestv2.json", "icon.png"]),
+        buildExtension("firefox-android-unpacked", ["background.js", "content.js", "manifestv2.mobile.json", "icon.png"], "dist/extension-mobile.js"),
     ]);
 
     Zip.sync.zip("dist/chromium-unpacked").compress().save("dist/extension-chrome.zip");
@@ -193,6 +233,9 @@ if (!process.argv.includes("--skip-extension")) {
 
     Zip.sync.zip("dist/firefox-unpacked").compress().save("dist/extension-firefox.zip");
     console.info("Packed Firefox Extension written to dist/extension-firefox.zip");
+
+    Zip.sync.zip("dist/firefox-android-unpacked").compress().save("dist/extension-firefox-android.zip");
+    console.info("Packed Firefox for Android Extension written to dist/extension-firefox-android.zip");
 } else {
-    await appendCssRuntime;
+    await Promise.all([appendCssRuntime, appendMobileCssRuntime]);
 }

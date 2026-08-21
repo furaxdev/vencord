@@ -1,0 +1,86 @@
+name: Build Android APK (Vencord4Mobile)
+
+on:
+  push:
+    branches: [main, "claude/vencord4mobile-android-*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Node + Vencord bundle ────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - uses: pnpm/action-setup@v4
+
+      - run: pnpm install
+
+      - name: Build Vencord mobile bundle
+        run: pnpm buildWeb --skip-extension
+        # → dist/Vencord.mobile.user.js
+
+      - name: Copy Vencord bundle into Android assets
+        run: cp dist/Vencord.mobile.user.js android/app/src/main/assets/vencord.js
+
+      # ── Java + Android SDK ───────────────────────────────────────────────
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+
+      - uses: android-actions/setup-android@v3
+
+      # ── Build APK ────────────────────────────────────────────────────────
+      - name: Generate Gradle wrapper
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.9
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      # ── Sign APK ─────────────────────────────────────────────────────────
+      # Si le secret ANDROID_KEYSTORE est défini, on l'utilise (clé persistante).
+      # Sinon on génère une clé debug temporaire.
+      - name: Sign APK
+        env:
+          KEYSTORE_B64:    ${{ secrets.ANDROID_KEYSTORE }}
+          KEYSTORE_PASS:   ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          KEY_ALIAS:       ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS:        ${{ secrets.ANDROID_KEY_PASS }}
+        run: |
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
+          APK=android/app/build/outputs/apk/release/app-release.apk
+
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "Signing with persistent keystore from secrets…"
+            echo "$KEYSTORE_B64" | base64 -d > release.keystore
+            "$APKSIGNER" sign \
+              --ks release.keystore \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass "pass:$KEYSTORE_PASS" \
+              --key-pass "pass:$KEY_PASS" \
+              --out vencord4mobile.apk "$APK"
+          else
+            echo "No secrets found – signing with a temporary debug key…"
+            keytool -genkey -v -keystore debug.keystore -alias key \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Vencord4Mobile,O=Vencord,C=US" 2>/dev/null
+            "$APKSIGNER" sign \
+              --ks debug.keystore --ks-key-alias key \
+              --ks-pass pass:android --key-pass pass:android \
+              --out vencord4mobile.apk "$APK"
+          fi
+
+      # ── Upload ───────────────────────────────────────────────────────────
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vencord4mobile-${{ github.sha }}
+          path: vencord4mobile.apk
+          retention-days: 14
