@@ -62,18 +62,28 @@ jobs:
                | sudo tee /usr/local/bin/apktool > /dev/null
           sudo chmod +x /usr/local/bin/apktool
 
-      # ── Download Discord APK ──────────────────────────────────────────────
+      # ── Install apkeep (downloads from Google Play / APKMirror) ─────────────
+      - name: Install apkeep
+        run: |
+          curl -sSL \
+            "https://github.com/EFForg/apkeep/releases/latest/download/apkeep-x86_64-unknown-linux-gnu" \
+            -o /usr/local/bin/apkeep
+          chmod +x /usr/local/bin/apkeep
+
+      # ── Download Discord APK from APKMirror ───────────────────────────────
+      # APKMirror verifies APK signatures against the original Google Play ones,
+      # making it far safer than APKPure (which had a malware incident in 2021).
       - name: Download Discord APK
         id: download_apk
         run: |
           VERSION="${{ github.event.inputs.discord_version }}"
 
           if [ -z "$VERSION" ]; then
-            # Fetch the latest stable version from APKPure JSON API
-            echo "No version specified – fetching latest from APKPure…"
-            LATEST=$(curl -sSL \
-              "https://apkpure.com/discord-chat-talk-hangout/com.discord/versions" \
-              | grep -oP '(?<=data-dt-version=")[^"]+' | head -1 || echo "")
+            # Scrape the latest version string from APKMirror
+            echo "No version specified – fetching latest from APKMirror…"
+            LATEST=$(curl -sSL -A "Mozilla/5.0 (compatible; Googlebot/2.1)" \
+              "https://www.apkmirror.com/apk/discord-inc/discord/" \
+              | grep -oP '(?<=discord-)[0-9]+\.[0-9]+' | head -1 || echo "")
 
             if [ -z "$LATEST" ]; then
               echo "Could not determine latest version – using hard-coded fallback"
@@ -86,14 +96,14 @@ jobs:
           echo "Discord version: $VERSION"
           echo "discord_version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          # Try APKPure direct download (stable, no account required)
-          APK_URL="https://d.apkpure.com/b/APK/com.discord?versionCode=${VERSION//./}&nc=arm64-v8a&sv=21"
-          echo "Downloading from: $APK_URL"
-          curl -sSL -A "Mozilla/5.0" -o discord.apk "$APK_URL"
+          # apkeep pulls from APKMirror (signature-verified)
+          apkeep -a com.discord -v "$VERSION" .
+          mv com.discord*.apk discord.apk 2>/dev/null || \
+            mv com.discord.apk discord.apk 2>/dev/null || \
+            { echo "APK not found after apkeep"; ls -la; exit 1; }
 
-          # Validate it's actually an APK (ZIP)
           file discord.apk | grep -q "Zip\|zip\|Java\|APK" || {
-            echo "Download failed or not a valid APK"
+            echo "Downloaded file is not a valid APK"
             exit 1
           }
           echo "APK downloaded ($(du -sh discord.apk | cut -f1))"
