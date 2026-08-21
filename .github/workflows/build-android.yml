@@ -1,0 +1,195 @@
+name: Build Android APK (Vencord4Mobile)
+
+on:
+  push:
+    branches: [main, "claude/vencord4mobile-android-*"]
+    paths:
+      - "src/**"
+      - "browser/**"
+      - "scripts/**"
+      - ".github/workflows/build-android.yml"
+  workflow_dispatch:
+    inputs:
+      discord_version:
+        description: "Discord APK version to patch (e.g. 228.21 – leave empty for latest)"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    name: Patch Discord APK with Vencord
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Node + pnpm ──────────────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install JS dependencies
+        run: pnpm install
+
+      # ── Build Vencord mobile bundle ──────────────────────────────────────
+      - name: Build Vencord mobile bundle
+        run: pnpm buildWeb --skip-extension
+        # produces dist/Vencord.mobile.user.js
+
+      # ── Java (apktool needs it) ───────────────────────────────────────────
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # ── Install apktool ───────────────────────────────────────────────────
+      - name: Install apktool
+        run: |
+          APKTOOL_VERSION=2.9.3
+          wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VERSION}/apktool_${APKTOOL_VERSION}.jar" \
+               -O /usr/local/lib/apktool.jar
+          echo '#!/bin/sh\nexec java -jar /usr/local/lib/apktool.jar "$@"' \
+               | sudo tee /usr/local/bin/apktool > /dev/null
+          sudo chmod +x /usr/local/bin/apktool
+
+      # ── Download Discord APK ──────────────────────────────────────────────
+      - name: Download Discord APK
+        id: download_apk
+        run: |
+          VERSION="${{ github.event.inputs.discord_version }}"
+
+          if [ -z "$VERSION" ]; then
+            # Fetch the latest stable version from APKPure JSON API
+            echo "No version specified – fetching latest from APKPure…"
+            LATEST=$(curl -sSL \
+              "https://apkpure.com/discord-chat-talk-hangout/com.discord/versions" \
+              | grep -oP '(?<=data-dt-version=")[^"]+' | head -1 || echo "")
+
+            if [ -z "$LATEST" ]; then
+              echo "Could not determine latest version – using hard-coded fallback"
+              VERSION="228.21"
+            else
+              VERSION="$LATEST"
+            fi
+          fi
+
+          echo "Discord version: $VERSION"
+          echo "discord_version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Try APKPure direct download (stable, no account required)
+          APK_URL="https://d.apkpure.com/b/APK/com.discord?versionCode=${VERSION//./}&nc=arm64-v8a&sv=21"
+          echo "Downloading from: $APK_URL"
+          curl -sSL -A "Mozilla/5.0" -o discord.apk "$APK_URL"
+
+          # Validate it's actually an APK (ZIP)
+          file discord.apk | grep -q "Zip\|zip\|Java\|APK" || {
+            echo "Download failed or not a valid APK"
+            exit 1
+          }
+          echo "APK downloaded ($(du -sh discord.apk | cut -f1))"
+
+      # ── Decode APK ────────────────────────────────────────────────────────
+      - name: Decode APK with apktool
+        run: |
+          apktool d discord.apk -o discord-decoded --no-src -f
+          echo "Decoded APK structure:"
+          find discord-decoded/assets -name "*.bundle" 2>/dev/null || echo "(no bundle found yet)"
+
+      # ── Inject Vencord ────────────────────────────────────────────────────
+      - name: Inject Vencord into JS bundle
+        run: node scripts/patchApk.mjs discord-decoded
+
+      # ── Rebuild APK ───────────────────────────────────────────────────────
+      - name: Rebuild APK
+        run: |
+          apktool b discord-decoded -o discord-vencord-unsigned.apk --use-aapt2
+          echo "Rebuilt APK: $(du -sh discord-vencord-unsigned.apk | cut -f1)"
+
+      # ── Sign APK ──────────────────────────────────────────────────────────
+      - name: Generate debug keystore
+        run: |
+          keytool -genkey -v \
+            -keystore debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Vencord4Mobile,O=Vencord,C=US" 2>/dev/null
+
+      - name: Zipalign
+        run: |
+          # Use zipalign from Android build-tools in the runner
+          ZIPALIGN=$(find /usr/local/lib/android/sdk -name zipalign 2>/dev/null | head -1)
+          if [ -z "$ZIPALIGN" ]; then
+            sudo apt-get install -y zipalign 2>/dev/null || true
+            ZIPALIGN=$(which zipalign 2>/dev/null || echo "")
+          fi
+
+          if [ -n "$ZIPALIGN" ]; then
+            "$ZIPALIGN" -v 4 discord-vencord-unsigned.apk discord-vencord-aligned.apk
+          else
+            echo "zipalign not available – skipping alignment step"
+            cp discord-vencord-unsigned.apk discord-vencord-aligned.apk
+          fi
+
+      - name: Sign APK
+        run: |
+          APKSIGNER=$(find /usr/local/lib/android/sdk -name apksigner 2>/dev/null | head -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" sign \
+              --ks debug.keystore \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out discord-vencord.apk \
+              discord-vencord-aligned.apk
+          else
+            # Fallback: jarsigner (always available with JDK)
+            jarsigner -verbose \
+              -keystore debug.keystore \
+              -storepass android \
+              -keypass android \
+              -signedjar discord-vencord.apk \
+              discord-vencord-aligned.apk \
+              androiddebugkey
+          fi
+
+          echo "Final APK: $(du -sh discord-vencord.apk | cut -f1)"
+
+      # ── Upload artifact ───────────────────────────────────────────────────
+      - name: Upload patched APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: discord-vencord-${{ steps.download_apk.outputs.discord_version }}
+          path: discord-vencord.apk
+          retention-days: 7
+
+      # ── Also create a GitHub Release on main branch ──────────────────────
+      - name: Create Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-${{ steps.download_apk.outputs.discord_version }}-vencord
+          name: "Discord ${{ steps.download_apk.outputs.discord_version }} + Vencord"
+          body: |
+            Patched Discord APK with Vencord injected.
+
+            **Discord version:** ${{ steps.download_apk.outputs.discord_version }}
+            **Vencord commit:** ${{ github.sha }}
+
+            ⚠️ Signed with a debug key – install with `adb install discord-vencord.apk`
+            or enable *Install from unknown sources* on your device.
+          files: discord-vencord.apk
+          draft: false
+          prerelease: true
