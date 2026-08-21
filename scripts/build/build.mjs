@@ -33,6 +33,7 @@ const defines = stringifyValues({
     IS_WEB: false,
     IS_EXTENSION: false,
     IS_USERSCRIPT: false,
+    IS_MOBILE_BUILD: false,
     VERSION,
     BUILD_TIMESTAMP
 });

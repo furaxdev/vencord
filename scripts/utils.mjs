@@ -28,3 +28,15 @@ export function getPluginTarget(filePath) {
     const identiferBits = identifier.split(".");
     return identiferBits.length === 1 ? null : identiferBits.at(-1);
 }
+
+/**
+ * Valid plugin targets and their descriptions
+ * - web: web (browser extension / userscript / PWA) only
+ * - desktop: desktop (Electron) only
+ * - browser: browser extension only
+ * - discordDesktop: Discord Desktop only
+ * - vesktop: Vesktop only
+ * - mobile: mobile (Android / iOS) only
+ * - dev: dev builds only
+ */
+export const PLUGIN_TARGETS = ["web", "desktop", "browser", "discordDesktop", "vesktop", "mobile", "dev"];
