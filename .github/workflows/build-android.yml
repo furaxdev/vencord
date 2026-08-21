@@ -36,11 +36,13 @@ jobs:
       - uses: android-actions/setup-android@v3
 
       # ── Build APK ────────────────────────────────────────────────────────
+      - name: Generate Gradle wrapper
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.9
+
       - name: Build release APK
         working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
 
       # ── Sign with a generated debug key ─────────────────────────────────
       - name: Sign APK
