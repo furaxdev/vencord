@@ -1,9 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Discord logo (official SVG path, scaled to 108×108dp adaptive icon canvas).
+    The "safe zone" for adaptive icons is the inner 72dp circle, so the logo
+    is centred and scaled to fit comfortably inside that zone.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#5865F2"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Discord Blurple background -->
+    <path
+        android:fillColor="#5865F2"
         android:pathData="M0,0h108v108H0z"/>
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M24,22h20l10,36 10,-36h20L62,86H46Z"/>
+
+    <!--
+        Official Discord logo path (from discord.com/branding).
+        Original viewport: 127.14 × 96.36
+        Scaled & centred to fit the 72dp safe zone (roughly 80px at 108dp canvas):
+          scale ≈ 0.63, offset x≈14, y≈22
+    -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+M93.46,20.17
+C87.34,17.34 80.79,15.29 73.95,14.17
+C73.10,15.68 72.11,17.69 71.42,19.28
+C64.12,18.22 56.89,18.22 49.71,19.28
+C49.02,17.69 47.99,15.68 47.14,14.17
+C40.29,15.29 33.73,17.35 27.61,20.19
+C14.97,39.33 11.56,57.98 13.26,76.37
+C21.43,82.42 29.34,86.09 37.11,88.47
+C39.03,85.87 40.76,83.10 42.26,80.20
+C39.44,79.17 36.76,77.90 34.24,76.42
+C34.93,75.92 35.61,75.39 36.26,74.85
+C52.36,82.50 70.04,82.50 85.95,74.85
+C86.61,75.39 87.29,75.92 87.98,76.42
+C85.45,77.91 82.75,79.18 79.93,80.21
+C81.43,83.11 83.15,85.89 85.08,88.48
+C92.86,86.10 100.78,82.43 108.95,76.37
+C110.93,55.04 105.71,36.56 93.46,20.17
+Z
+M44.09,65.31
+C39.68,65.31 36.05,61.24 36.05,56.24
+C36.05,51.25 39.60,47.17 44.09,47.17
+C48.59,47.17 52.21,51.25 52.13,56.24
+C52.14,61.24 48.59,65.31 44.09,65.31
+Z
+M78.12,65.31
+C73.71,65.31 70.08,61.24 70.08,56.24
+C70.08,51.25 73.63,47.17 78.12,47.17
+C82.62,47.17 86.24,51.25 86.16,56.24
+C86.16,61.24 82.62,65.31 78.12,65.31
+Z
+        "/>
 </vector>
