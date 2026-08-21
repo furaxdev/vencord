@@ -44,19 +44,39 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon
 
-      # ── Sign with a generated debug key ─────────────────────────────────
+      # ── Sign APK ─────────────────────────────────────────────────────────
+      # Si le secret ANDROID_KEYSTORE est défini, on l'utilise (clé persistante).
+      # Sinon on génère une clé debug temporaire.
       - name: Sign APK
+        env:
+          KEYSTORE_B64:    ${{ secrets.ANDROID_KEYSTORE }}
+          KEYSTORE_PASS:   ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          KEY_ALIAS:       ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS:        ${{ secrets.ANDROID_KEY_PASS }}
         run: |
-          keytool -genkey -v -keystore debug.keystore -alias key \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass android -keypass android \
-            -dname "CN=Vencord4Mobile,O=Vencord,C=US" 2>/dev/null
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
+          APK=android/app/build/outputs/apk/release/app-release.apk
 
-          $ANDROID_HOME/build-tools/*/apksigner sign \
-            --ks debug.keystore --ks-key-alias key \
-            --ks-pass pass:android --key-pass pass:android \
-            --out vencord4mobile.apk \
-            android/app/build/outputs/apk/release/app-release.apk
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "Signing with persistent keystore from secrets…"
+            echo "$KEYSTORE_B64" | base64 -d > release.keystore
+            "$APKSIGNER" sign \
+              --ks release.keystore \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass "pass:$KEYSTORE_PASS" \
+              --key-pass "pass:$KEY_PASS" \
+              --out vencord4mobile.apk "$APK"
+          else
+            echo "No secrets found – signing with a temporary debug key…"
+            keytool -genkey -v -keystore debug.keystore -alias key \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Vencord4Mobile,O=Vencord,C=US" 2>/dev/null
+            "$APKSIGNER" sign \
+              --ks debug.keystore --ks-key-alias key \
+              --ks-pass pass:android --key-pass pass:android \
+              --out vencord4mobile.apk "$APK"
+          fi
 
       # ── Upload ───────────────────────────────────────────────────────────
       - uses: actions/upload-artifact@v4
