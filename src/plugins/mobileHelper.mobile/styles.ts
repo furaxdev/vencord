@@ -7,6 +7,30 @@
 const STYLE_ID = "vc-mobile-helper";
 
 const CSS = `
+/* Safe area: push content above Android system nav bar */
+#app-mount,
+[class*="app-"] {
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+}
+
+/* Prevent the user panel (profile) from hiding behind the system nav */
+[class*="panels-"] {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px) !important;
+}
+
+/* Friends/DM tab bar: scrollable so nothing is clipped on the right */
+[class*="privateChannels-"] [class*="header"],
+[class*="friendsTableHead"],
+[class*="tabBar-"] {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+}
+
+/* Hide the horizontal scrollbar while keeping scrollability */
+[class*="tabBar-"]::-webkit-scrollbar {
+    display: none;
+}
+
 /* Make Vencord settings accessible on mobile (larger tap targets) */
 [class*="titleBar"] button,
 [class*="toolbar"] button {

@@ -137,11 +137,16 @@ class MainActivity : AppCompatActivity() {
                 val resp = http.newCall(req).execute()
                 val body = resp.body?.string() ?: return null
 
-                // Inject Vencord before Discord's first <script>
-                val patched = body.replaceFirst(
-                    "<head>",
-                    "<head><script>$vencordJs</script>"
-                )
+                // Inject Vencord + fix viewport for Android edge-to-edge safe areas
+                val patched = body
+                    .replaceFirst(
+                        "<head>",
+                        "<head><script>$vencordJs</script>"
+                    )
+                    .replace(
+                        Regex("""<meta\s+name=["']viewport["'][^>]*>""", RegexOption.IGNORE_CASE),
+                        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">"
+                    )
 
                 // Rebuild headers without CSP
                 val headers = mutableMapOf<String, String>()
